@@ -1,0 +1,5 @@
+.vscode
+filter.o
+decimate.o
+FFTDataToImage.exe
+build/
