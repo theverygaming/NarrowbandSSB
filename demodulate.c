@@ -8,6 +8,43 @@
 #include "filter.h"
 #include <volk/volk.h>
 
+
+void fft_bandpass_filter(float *in, long int samplecount, int samplerate, int fftN, float lowCutoff, float highCutoff)
+{
+	double *ProcessR = (double*)malloc(sizeof(double)*fftN);
+	double complex *ProcessC = (double complex*)malloc(sizeof(double complex)*fftN);
+	fftw_plan plan_forward = fftw_plan_dft_r2c_1d(fftN, ProcessR, ProcessC, FFTW_ESTIMATE);
+	fftw_plan plan_backward = fftw_plan_dft_c2r_1d(fftN, ProcessC, ProcessR, FFTW_ESTIMATE);
+
+	for(long int ix = 0; ix < samplecount; ix += fftN)
+	{
+		for(int i = 0; i < fftN; i++)
+		{
+			ProcessR[i] = (double)in[ix+i];
+		}
+
+		fftw_execute(plan_forward);
+		for(int i = 0; i < fftN; i++)
+		{
+			double real = creal(ProcessC[i]);
+			double imag = cimag(ProcessC[i]);
+			
+		}
+		fftw_execute(plan_backward);
+
+		for(int i = 0; i < fftN; i++)
+		{
+			in[ix+i] = (float)ProcessR[i];
+		}
+	}
+
+	fftw_destroy_plan(plan_forward);
+	fftw_destroy_plan(plan_backward);
+	free(ProcessR);
+	free(ProcessC);
+}
+
+
 void Hilbert(float *in, lv_32fc_t *out, int num_elements, int N)
 {
 	double complex *InputArray = malloc(sizeof(double complex) * num_elements);
@@ -95,12 +132,10 @@ int main()
 
 	//Apply filters to I and Q	
 	printf("Applying filters\n");
-	BWBandPass *filterR = create_bw_band_pass_filter(50, samp_rate, MixFrequency, MixFrequency + Bandwidth);
-	for (int i = 0; i < samp_count; i++)
-	{
-		//samples[i] = bw_band_pass(filterR, samples[i]);
-	}
-	free_bw_band_pass(filterR);
+	//BWBandPass *filterR = create_bw_band_pass_filter(50, samp_rate, MixFrequency, (float)MixFrequency + 10);
+	//BWLowPass *filterL = create_bw_low_pass_filter(50, samp_rate, MixFrequency + Bandwidth);
+	//BWHighPass *filterH = create_bw_high_pass_filter(50, samp_rate, MixFrequency);
+	fft_bandpass_filter(samples, samp_count, samp_rate, 4096, MixFrequency, MixFrequency + Bandwidth);
 	
 
 
@@ -108,10 +143,10 @@ int main()
 	//Convert real array into complex, set Imaginary to zero
 	printf("Converting to complex\n");
 	lv_32fc_t *inputComplex = (lv_32fc_t *)volk_malloc(sizeof(lv_32fc_t) * samp_count, volk_get_alignment());
-	//Hilbert(samples, inputComplex, samp_count, samp_count);
+	Hilbert(samples, inputComplex, samp_count, samp_count);
 	for(int i = 0; i < samp_count; i++)
 	{
-		inputComplex[i] = samples[i] + 0 * I;
+		//inputComplex[i] = samples[i] + 0 * I;
 	}
 	free(samples);
 
