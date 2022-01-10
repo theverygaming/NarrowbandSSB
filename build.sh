@@ -1,6 +1,8 @@
 #!/bin/bash
-rm build/decimate
+rm build/modulate
+rm build/demodulate
 make main
 cd build
-./decimate
+./modulate
+./demodulate
 cd ..

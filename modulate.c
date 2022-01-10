@@ -77,9 +77,15 @@ int main()
 	printf("Sample Count = %ld\n", samp_count);
 	sf_close(inFile);
 
-	const int MixFrequency = 2000; //user
+	const int MixFrequency = 10; //user
 	const int Bandwidth = 1000;	   //user
-	const int speedDivider = 10;   //user
+	const int speedDivider = 2000;   //user
+
+	if(speedDivider > samp_rate)
+	{
+		printf("Minimum Bandwidth is 0.5Hz!\n");
+		return 0;
+	}
 
 	if (speedDivider > 1)
 	{
@@ -92,22 +98,9 @@ int main()
 		long int SrRatio = newSampleRate / oldSampleRate;
 		printf("Ratio: %ld NewSR: %ld\n", SrRatio, SrRatio * 100);
 		//upsample
-		float *newSamples = malloc(newSampCount * sizeof(float));
+		float *newSamples = calloc(newSampCount ,sizeof(float));
 		BWLowPass *sampFilter;
-		/*
-		if(newSampleRate < 100000)
-		{
-			sampFilter = create_bw_low_pass_filter(30, newSampleRate, oldSampleRate / 2);
-		}
-		if(newSampleRate > 10000000)
-		{
-			sampFilter = create_bw_low_pass_filter(30, newSampleRate / (speedDivider * 3), (oldSampleRate / 2) / (speedDivider * 3));
-		}
-		else
-		{
-			sampFilter = create_bw_low_pass_filter(30, newSampleRate / speedDivider, (oldSampleRate / 2) / speedDivider);
-		}
-		*/
+		//sampFilter = create_bw_low_pass_filter(30, 100 * SrRatio, 100 / 2);
 		sampFilter = create_bw_low_pass_filter(30, 100 * SrRatio, 100 / 2);
 		for (long int i = 0; i < oldSampCount - 1; i++)
 		{
@@ -124,7 +117,7 @@ int main()
 		}
 		if(AllZero)
 		{
-			printf("Error: All zero!\n");
+			printf("Error: All zero! Either your samplerate ratio was too crazy or your input file was empty\n");
 			return 1;
 		}
 		free_bw_low_pass(sampFilter);
