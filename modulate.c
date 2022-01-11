@@ -77,9 +77,9 @@ int main()
 	printf("Sample Count = %ld\n", samp_count);
 	sf_close(inFile);
 
-	const int MixFrequency = 10; //user
-	const int Bandwidth = 1000;	   //user
-	const int speedDivider = 2000;   //user
+	const int MixFrequency = 500; //user
+	const int Bandwidth = 1000;	   //user unused
+	const int speedDivider = 4000;   //user
 
 	if(speedDivider > samp_rate)
 	{

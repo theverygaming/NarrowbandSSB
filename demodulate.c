@@ -12,29 +12,38 @@
 void fft_bandpass_filter(float *in, long int samplecount, int samplerate, int fftN, float lowCutoff, float highCutoff)
 {
 	double *ProcessR = (double*)malloc(sizeof(double)*fftN);
-	double complex *ProcessC = (double complex*)malloc(sizeof(double complex)*fftN);
+	double complex *ProcessC = (double complex*)malloc(sizeof(double complex)*(fftN / 2 + 1));
 	fftw_plan plan_forward = fftw_plan_dft_r2c_1d(fftN, ProcessR, ProcessC, FFTW_ESTIMATE);
 	fftw_plan plan_backward = fftw_plan_dft_c2r_1d(fftN, ProcessC, ProcessR, FFTW_ESTIMATE);
 
 	for(long int ix = 0; ix < samplecount; ix += fftN)
 	{
+		if (ix + fftN > samplecount)
+			break;
 		for(int i = 0; i < fftN; i++)
 		{
 			ProcessR[i] = (double)in[ix+i];
 		}
 
 		fftw_execute(plan_forward);
-		for(int i = 0; i < fftN; i++)
+		for(int i = 0; i < (fftN / 2 + 1); i++)
 		{
 			double real = creal(ProcessC[i]);
 			double imag = cimag(ProcessC[i]);
+			float binFrequency = (float)(i+1) * (float)samplerate / (float)fftN;
+			if(binFrequency < lowCutoff || binFrequency > highCutoff)
+			{
+				real = 0;
+				imag = 0;
+			}
+			ProcessC[i] = real + imag * I;
 			
 		}
 		fftw_execute(plan_backward);
 
 		for(int i = 0; i < fftN; i++)
 		{
-			in[ix+i] = (float)ProcessR[i];
+			in[ix+i] = (float)ProcessR[i] / fftN;
 		}
 	}
 
@@ -114,9 +123,9 @@ int main()
 	printf("Sample Count = %ld\n", samp_count);
 	sf_close(inFile);
 
-	const int MixFrequency = 10; //user
+	const int MixFrequency = 500; //user
 	//const int Bandwidth = 1000;	   //user
-	const int speedDivider = 2000;   //user
+	const int speedDivider = 4000;   //user
 
 	float Bandwidth = (float)(samp_rate / 2) / speedDivider;
 	if(speedDivider > samp_rate)
@@ -135,7 +144,7 @@ int main()
 	//BWBandPass *filterR = create_bw_band_pass_filter(50, samp_rate, MixFrequency, (float)MixFrequency + 10);
 	//BWLowPass *filterL = create_bw_low_pass_filter(50, samp_rate, MixFrequency + Bandwidth);
 	//BWHighPass *filterH = create_bw_high_pass_filter(50, samp_rate, MixFrequency);
-	fft_bandpass_filter(samples, samp_count, samp_rate, 4096, MixFrequency, MixFrequency + Bandwidth);
+	fft_bandpass_filter(samples, samp_count, samp_rate, samp_count, MixFrequency, MixFrequency + Bandwidth);
 	
 
 
@@ -144,18 +153,18 @@ int main()
 	printf("Converting to complex\n");
 	lv_32fc_t *inputComplex = (lv_32fc_t *)volk_malloc(sizeof(lv_32fc_t) * samp_count, volk_get_alignment());
 	Hilbert(samples, inputComplex, samp_count, samp_count);
-	for(int i = 0; i < samp_count; i++)
-	{
-		//inputComplex[i] = samples[i] + 0 * I;
-	}
 	free(samples);
 
 	printf("Mixing up\n");
-	float sinAngle = 2.0 * 3.14159265359 * MixFrequency / samp_rate;
+	float sinAngle = 2.0 * 3.14159265359 * -MixFrequency / samp_rate;
 	lv_32fc_t phase_increment = lv_cmake(cos(sinAngle), sin(sinAngle));
 	lv_32fc_t phase = lv_cmake(1.f, 0.0f);
-	//volk_32fc_s32fc_x2_rotator_32fc(inputComplex, inputComplex, phase_increment, &phase, samp_count);
+	volk_32fc_s32fc_x2_rotator_32fc(inputComplex, inputComplex, phase_increment, &phase, samp_count);
 
+
+
+	
+	
 	
 
 	char *outFileName = "demod_out_complex.wav";
@@ -166,11 +175,18 @@ int main()
 	sf_writef_float(outFile, (float *)inputComplex, samp_count);
 	sf_close(outFile);
 
-	printf("Converting back to real\n");
-	float *outputReal = calloc(samp_count, sizeof(float));
-	for (int i = 0; i < samp_count; i++)
+	//Downsample
+	printf("Converting back to real + Resampling\n");
+	float *outputReal = malloc((samp_count / speedDivider) * sizeof(float));
+	int samplecounter = 0;
+	for(int i = 0; i < samp_count; i++)
 	{
-		outputReal[i] = creal(inputComplex[i]);
+		samplecounter++;
+		if(samplecounter == speedDivider)
+		{
+			outputReal[i/speedDivider] = creal(inputComplex[i]);
+			samplecounter = 0;
+		}
 	}
 	volk_free(inputComplex);
 
@@ -180,7 +196,7 @@ int main()
 	SNDFILE *outFile2;
 	SF_INFO outFileInfo2 = inFileInfo;
 	outFile2 = sf_open(outFileName2, SFM_WRITE, &outFileInfo2);
-	sf_writef_float(outFile2, outputReal, samp_count);
+	sf_writef_float(outFile2, outputReal, samp_count / speedDivider);
 	sf_close(outFile2);
 	
 
