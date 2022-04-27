@@ -3,7 +3,7 @@
 #include <sndfile.h>
 #include <math.h>
 #include <string.h>
-#include <complex.h> //Complex must be included before fftw3 for fftw3 to use the c standard complex type
+#include <complex>
 #include <fftw3.h>
 #include "filter.h"
 #include <volk/volk.h>
@@ -12,9 +12,9 @@
 void fft_bandpass_filter(float *in, long int samplecount, int samplerate, int fftN, float lowCutoff, float highCutoff)
 {
 	double *ProcessR = (double*)malloc(sizeof(double)*fftN);
-	double complex *ProcessC = (double complex*)malloc(sizeof(double complex)*(fftN / 2 + 1));
-	fftw_plan plan_forward = fftw_plan_dft_r2c_1d(fftN, ProcessR, ProcessC, FFTW_ESTIMATE);
-	fftw_plan plan_backward = fftw_plan_dft_c2r_1d(fftN, ProcessC, ProcessR, FFTW_ESTIMATE);
+	std::complex<double> *ProcessC = (std::complex<double>*)malloc(sizeof(std::complex<double>)*(fftN / 2 + 1));
+	fftw_plan plan_forward = fftw_plan_dft_r2c_1d(fftN, ProcessR, (fftw_complex*)ProcessC, FFTW_ESTIMATE);
+	fftw_plan plan_backward = fftw_plan_dft_c2r_1d(fftN, (fftw_complex*)ProcessC, ProcessR, FFTW_ESTIMATE);
 
 	for(long int ix = 0; ix < samplecount; ix += fftN)
 	{
@@ -28,15 +28,15 @@ void fft_bandpass_filter(float *in, long int samplecount, int samplerate, int ff
 		fftw_execute(plan_forward);
 		for(int i = 0; i < (fftN / 2 + 1); i++)
 		{
-			double real = creal(ProcessC[i]);
-			double imag = cimag(ProcessC[i]);
+			double real = ProcessC[i].real();
+			double imag = ProcessC[i].imag();
 			float binFrequency = (float)(i+1) * (float)samplerate / (float)fftN;
 			if(binFrequency < lowCutoff || binFrequency > highCutoff)
 			{
 				real = 0;
 				imag = 0;
 			}
-			ProcessC[i] = real + imag * I;
+			ProcessC[i] = std::complex<double>(real,imag);
 			
 		}
 		fftw_execute(plan_backward);
@@ -56,46 +56,45 @@ void fft_bandpass_filter(float *in, long int samplecount, int samplerate, int ff
 
 void Hilbert(float *in, lv_32fc_t *out, int num_elements, int N)
 {
-	double complex *InputArray = malloc(sizeof(double complex) * num_elements);
+	std::complex<double> *InputArray = (std::complex<double>*)malloc(sizeof(std::complex<double>) * num_elements);
 	for (int i = 0; i < num_elements; i++)
 	{
-		InputArray[i] = in[i] + 0 * I;
+		InputArray[i] = std::complex<double>(in[i], 0);
 	}
 
-	double complex *ProcessArray = malloc(sizeof(double complex) * num_elements);
+	std::complex<double> *ProcessArray = (std::complex<double>*)malloc(sizeof(std::complex<double>) * num_elements);
 
-	fftw_plan plan_forward = fftw_plan_dft_1d(N, ProcessArray, ProcessArray, FFTW_FORWARD, FFTW_ESTIMATE);
-	fftw_plan plan_backward = fftw_plan_dft_1d(N, ProcessArray, ProcessArray, FFTW_BACKWARD, FFTW_ESTIMATE);
+	fftw_plan plan_forward = fftw_plan_dft_1d(N, (fftw_complex*)ProcessArray, (fftw_complex*)ProcessArray, FFTW_FORWARD, FFTW_ESTIMATE);
+	fftw_plan plan_backward = fftw_plan_dft_1d(N, (fftw_complex*)ProcessArray, (fftw_complex*)ProcessArray, FFTW_BACKWARD, FFTW_ESTIMATE);
 
 	for (int ix = 0; ix < num_elements; ix += N)
 	{
 		//printf("I: %d num_elements: %d\n", i, num_elements);
 		if (ix + N > num_elements)
 			break;
-		memcpy(ProcessArray, InputArray + ix, sizeof(double complex) * N);
+		memcpy(ProcessArray, InputArray + ix, sizeof(std::complex<double>) * N);
 		fftw_execute(plan_forward);
 		int hN = N >> 1; // half of the length (N/2)
 		int numRem = hN; // the number of remaining elements
 		for (int i = 1; i < hN; ++i)
 		{
-			ProcessArray[i] = (creal(ProcessArray[i]) * 2) + (cimag(ProcessArray[i]) * 2) * I;
+			ProcessArray[i] = std::complex<double>(((ProcessArray[i]).real() * 2), ((ProcessArray[i]).imag() * 2));
 		}
 		if (N % 2 == 0)
 			numRem--;
 		else if (N > 1)
 		{
-			ProcessArray[hN] = (creal(ProcessArray[hN]) * 2) + (cimag(ProcessArray[hN]) * 2) * I;
+			ProcessArray[hN] = std::complex<double>(((ProcessArray[hN]).real() * 2), ((ProcessArray[hN]).imag() * 2));
 		}
-		memset(&ProcessArray[hN + 1], 0, numRem * sizeof(double complex));
+		memset(&ProcessArray[hN + 1], 0, numRem * sizeof(std::complex<double>));
 		fftw_execute(plan_backward);
 		for (int i = 0; i < N; ++i)
 		{
-			ProcessArray[i] = (creal(ProcessArray[i]) / N) + (cimag(ProcessArray[i]) / N) * I;
+			ProcessArray[i] = std::complex<double>(((ProcessArray[i]).real() / N), ((ProcessArray[i]).imag() / N));
 		}
 		for (int i = 0; i < N; i++)
 		{
-			//out[i] = (complex float) ((float)creal(ProcessArray[i]) / N) + ((float)cimag(ProcessArray[i]) / N)*I;
-			out[ix + i] = creal(ProcessArray[i]) + cimag(ProcessArray[i]) * I;
+			out[ix + i] = std::complex<float>(ProcessArray[i].real(), ProcessArray[i].imag());
 		}
 	}
 
@@ -115,7 +114,7 @@ int main()
 	inFile = sf_open(inFileName, SFM_READ, &inFileInfo);
 	long int samp_count = inFileInfo.frames;
 	int samp_rate = inFileInfo.samplerate;
-	float *samples = calloc(samp_count, sizeof(float));
+	float *samples = (float*)calloc(samp_count, sizeof(float));
 	sf_readf_float(inFile, samples, samp_count); //??? fix this pointer thing pls why it produce warning error idk
 	sf_close(inFile);
 	printf("Be careful! This code will break with WAV files at 48000 Hz that are longer than about 12h. Actually it might be 6h but idk\n");
@@ -125,7 +124,7 @@ int main()
 
 	const int MixFrequency = 500; //user
 	//const int Bandwidth = 1000;	   //user
-	const int speedDivider = 4000;   //user
+	const int speedDivider = 10;   //user
 
 	float Bandwidth = (float)(samp_rate / 2) / speedDivider;
 	if(speedDivider > samp_rate)
@@ -177,14 +176,14 @@ int main()
 
 	//Downsample
 	printf("Converting back to real + Resampling\n");
-	float *outputReal = malloc((samp_count / speedDivider) * sizeof(float));
+	float *outputReal = (float*)malloc((samp_count / speedDivider) * sizeof(float));
 	int samplecounter = 0;
 	for(int i = 0; i < samp_count; i++)
 	{
 		samplecounter++;
 		if(samplecounter == speedDivider)
 		{
-			outputReal[i/speedDivider] = creal(inputComplex[i]);
+			outputReal[i/speedDivider] = inputComplex[i].real();
 			samplecounter = 0;
 		}
 	}
