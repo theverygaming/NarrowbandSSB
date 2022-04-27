@@ -8,6 +8,7 @@
 #include "filter.h"
 #include <volk/volk.h>
 #include "wavwriter.h"
+#include "dsp.h"
 
 void Hilbert(float *in, lv_32fc_t *out, int num_elements, int N)
 {
@@ -78,7 +79,6 @@ int main()
 	sf_close(inFile);
 
 	const int MixFrequency = 500; //user
-	const int Bandwidth = 1000;	   //user unused
 	const int speedDivider = 10;   //user
 
 	if(speedDivider > samp_rate)
@@ -87,50 +87,28 @@ int main()
 		return 0;
 	}
 
-	if (speedDivider > 1)
-	{
-		printf("Output Bandwidth: %fHz\n", (float)(samp_rate / 2) / speedDivider);
-		printf("upsampling + filtering %dx New samplerate = %d\n", speedDivider, samp_rate * speedDivider);
-		long int oldSampleRate = samp_rate / speedDivider;
-		long int newSampleRate = samp_rate;
-		long int oldSampCount = samp_count;
-		long int newSampCount = samp_count * speedDivider;
-		long int SrRatio = newSampleRate / oldSampleRate;
-		printf("Ratio: %ld NewSR: %ld\n", SrRatio, SrRatio * 100);
-		//upsample
-		float *newSamples = (float*)calloc(newSampCount ,sizeof(float));
-		BWLowPass *sampFilter;
-		//sampFilter = create_bw_low_pass_filter(30, 100 * SrRatio, 100 / 2);
-		sampFilter = create_bw_low_pass_filter(30, 100 * SrRatio, 100 / 2);
-		for (long int i = 0; i < oldSampCount - 1; i++)
-		{
-			newSamples[i * speedDivider] = samples[i];
-		}
-		bool AllZero = true;
-		for(long int i = 0; i < newSampCount - 1; i++)
-		{
-			newSamples[i] = bw_low_pass(sampFilter, newSamples[i]) * (speedDivider * 0.5);
-			if(AllZero && newSamples[i] != 0)
-			{
-				AllZero = false;
-			}
-		}
-		if(AllZero)
-		{
-			printf("Error: All zero! Either your samplerate ratio was too crazy or your input file was empty\n");
-			return 1;
-		}
-		free_bw_low_pass(sampFilter);
-		samp_count = newSampCount;
-		free(samples);
-		samples = newSamples;
-	}
+	
 
 	//Convert real array into complex, set Imaginary to zero
 	printf("Converting to complex\n");
-	std::complex<float> *inputComplex = (std::complex<float>*)calloc(samp_count, sizeof(std::complex<float>));
-	Hilbert(samples, inputComplex, samp_count, samp_count);
+	std::complex<float> *inputComplex1 = (std::complex<float>*)calloc(samp_count, sizeof(std::complex<float>));
+	//Hilbert(samples, inputComplex, samp_count, samp_count);
+	DSP::filters::fftbrickwallhilbert *hilbert = new DSP::filters::fftbrickwallhilbert(100, samp_count);
+	hilbert->processSamples(samp_count, samples, inputComplex1);
 	free(samples);
+
+
+	printf("Upsampling\n");
+	if (speedDivider > 1)
+	{
+		printf("Output Bandwidth: %fHz\n", (float)(samp_rate / 2) / speedDivider);
+	}
+	std::complex<float> *inputComplex = (std::complex<float>*)calloc(samp_count * speedDivider, sizeof(std::complex<float>));
+	DSP::upsamplers::complexUpsampler upsampler(samp_count, speedDivider);
+	upsampler.processSamples(inputComplex1, inputComplex);
+	samp_count = samp_count * speedDivider;
+	free(inputComplex1);
+
 
 	printf("Mixing up\n");
 	unsigned int alignment = volk_get_alignment();
@@ -159,7 +137,7 @@ int main()
 
 	
 	printf("Writing to output file\n");
-	WavWriter writer("out_w.wav", 32, 1, samp_rate);
+	WavWriter writer("out.wav", 32, 1, samp_rate);
 	if(writer.isOpen())
 	{
 		writer.writeData(outputReal, samp_count * sizeof(float));
