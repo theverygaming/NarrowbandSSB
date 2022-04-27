@@ -7,6 +7,7 @@
 #include <fftw3.h>
 #include "filter.h"
 #include <volk/volk.h>
+#include "wavwriter.h"
 
 void Hilbert(float *in, lv_32fc_t *out, int num_elements, int N)
 {
@@ -140,13 +141,13 @@ int main()
 	volk_32fc_s32fc_x2_rotator_32fc(outputComplex, inputComplex, phase_increment, &phase, samp_count);
 	free(inputComplex);
 
-	char *outFileName = "out_complex.wav";
+	/*char *outFileName = "out_complex.wav";
 	SNDFILE *outFile;
 	SF_INFO outFileInfo = inFileInfo;
 	outFileInfo.channels = 2;
 	outFile = sf_open(outFileName, SFM_WRITE, &outFileInfo);
 	sf_writef_float(outFile, (float *)outputComplex, samp_count);
-	sf_close(outFile);
+	sf_close(outFile);*/
 
 	printf("Converting back to real\n");
 	float *outputReal = (float*)calloc(samp_count, sizeof(float));
@@ -157,14 +158,16 @@ int main()
 	volk_free(outputComplex);
 
 	
-	printf("Writing to file\n");
-	char *outFileName2 = "out.wav";
-	SNDFILE *outFile2;
-	SF_INFO outFileInfo2 = inFileInfo;
-	outFile2 = sf_open(outFileName2, SFM_WRITE, &outFileInfo2);
-	sf_writef_float(outFile2, outputReal, samp_count);
-	sf_close(outFile2);
-	
+	printf("Writing to output file\n");
+	WavWriter writer("out_w.wav", 32, 1, samp_rate);
+	if(writer.isOpen())
+	{
+		writer.writeData(outputReal, samp_count * sizeof(float));
+	}
+	else {
+		printf("could not open output file");
+	}
+	writer.finish();
 
 	return 0;
 }

@@ -7,6 +7,7 @@
 #include <fftw3.h>
 #include "filter.h"
 #include <volk/volk.h>
+#include "wavwriter.h"
 
 
 void fft_bandpass_filter(float *in, long int samplecount, int samplerate, int fftN, float lowCutoff, float highCutoff)
@@ -166,13 +167,13 @@ int main()
 	
 	
 
-	char *outFileName = "demod_out_complex.wav";
+	/*char *outFileName = "demod_out_complex.wav";
 	SNDFILE *outFile;
 	SF_INFO outFileInfo = inFileInfo;
 	outFileInfo.channels = 2;
 	outFile = sf_open(outFileName, SFM_WRITE, &outFileInfo);
 	sf_writef_float(outFile, (float *)inputComplex, samp_count);
-	sf_close(outFile);
+	sf_close(outFile);*/
 
 	//Downsample
 	printf("Converting back to real + Resampling\n");

@@ -1,7 +1,6 @@
 #!/bin/bash
-rm build/modulate
-rm build/demodulate
-make main
+make clean
+make
 cd build
 ./modulate
 ./demodulate
