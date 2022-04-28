@@ -244,7 +244,7 @@ namespace DSP {
         public:
             realUpsampler(int multiplier, int chunkSize) {
                 _multiplier = multiplier;
-                bpf = new filters::fftbrickwallbandpass(100, chunkSize * _multiplier, 0, (float)1 / multiplier);
+                bpf = new filters::fftbrickwallbandpass(40, chunkSize * _multiplier, 0, (float)1 / multiplier);
             }
 
             ~realUpsampler() {

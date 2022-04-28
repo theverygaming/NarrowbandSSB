@@ -10,56 +10,6 @@
 #include "wavwriter.h"
 #include "dsp.h"
 
-void Hilbert(float *in, lv_32fc_t *out, int num_elements, int N)
-{
-	std::complex<double> *InputArray = (std::complex<double>*)malloc(sizeof(std::complex<double>) * num_elements);
-	for (int i = 0; i < num_elements; i++)
-	{
-		InputArray[i] = std::complex<double>(in[i], 0);
-	}
-
-	std::complex<double> *ProcessArray = (std::complex<double>*)malloc(sizeof(std::complex<double>) * num_elements);
-
-	fftw_plan plan_forward = fftw_plan_dft_1d(N, (fftw_complex*)ProcessArray, (fftw_complex*)ProcessArray, FFTW_FORWARD, FFTW_ESTIMATE);
-	fftw_plan plan_backward = fftw_plan_dft_1d(N, (fftw_complex*)ProcessArray, (fftw_complex*)ProcessArray, FFTW_BACKWARD, FFTW_ESTIMATE);
-
-	for (int ix = 0; ix < num_elements; ix += N)
-	{
-		//printf("I: %d num_elements: %d\n", i, num_elements);
-		if (ix + N > num_elements)
-			break;
-		memcpy(ProcessArray, InputArray + ix, sizeof(std::complex<double>) * N);
-		fftw_execute(plan_forward);
-		int hN = N >> 1; // half of the length (N/2)
-		int numRem = hN; // the number of remaining elements
-		for (int i = 1; i < hN; ++i)
-		{
-			ProcessArray[i] = std::complex<double>(((ProcessArray[i]).real() * 2), ((ProcessArray[i]).imag() * 2));
-		}
-		if (N % 2 == 0)
-			numRem--;
-		else if (N > 1)
-		{
-			ProcessArray[hN] = std::complex<double>(((ProcessArray[hN]).real() * 2), ((ProcessArray[hN]).imag() * 2));
-		}
-		memset(&ProcessArray[hN + 1], 0, numRem * sizeof(std::complex<double>));
-		fftw_execute(plan_backward);
-		for (int i = 0; i < N; ++i)
-		{
-			ProcessArray[i] = std::complex<double>(((ProcessArray[i]).real() / N), ((ProcessArray[i]).imag() / N));
-		}
-		for (int i = 0; i < N; i++)
-		{
-			out[ix + i] = std::complex<float>(ProcessArray[i].real(), ProcessArray[i].imag());
-		}
-	}
-
-	fftw_destroy_plan(plan_forward);
-	fftw_destroy_plan(plan_backward);
-	free(ProcessArray);
-	free(InputArray);
-}
-
 int main()
 {
 	char *inFileName;
@@ -92,8 +42,7 @@ int main()
 	//Convert real array into complex, set Imaginary to zero
 	printf("Converting to complex\n");
 	std::complex<float> *inputComplex1 = (std::complex<float>*)calloc(samp_count, sizeof(std::complex<float>));
-	//Hilbert(samples, inputComplex, samp_count, samp_count);
-	DSP::filters::fftbrickwallhilbert *hilbert = new DSP::filters::fftbrickwallhilbert(100, samp_count);
+	DSP::filters::fftbrickwallhilbert *hilbert = new DSP::filters::fftbrickwallhilbert(300, samp_count);
 	hilbert->processSamples(samp_count, samples, inputComplex1);
 	free(samples);
 
@@ -118,14 +67,6 @@ int main()
 	lv_32fc_t phase = lv_cmake(1.f, 0.0f);
 	volk_32fc_s32fc_x2_rotator_32fc(outputComplex, inputComplex, phase_increment, &phase, samp_count);
 	free(inputComplex);
-
-	/*char *outFileName = "out_complex.wav";
-	SNDFILE *outFile;
-	SF_INFO outFileInfo = inFileInfo;
-	outFileInfo.channels = 2;
-	outFile = sf_open(outFileName, SFM_WRITE, &outFileInfo);
-	sf_writef_float(outFile, (float *)outputComplex, samp_count);
-	sf_close(outFile);*/
 
 	printf("Converting back to real\n");
 	float *outputReal = (float*)calloc(samp_count, sizeof(float));
