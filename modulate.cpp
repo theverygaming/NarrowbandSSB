@@ -9,7 +9,9 @@
 #include "wavwriter.h"
 #include "dsp/dsp.h"
 #include "dsp/gain.h"
-#include "dsp/fir.h"
+#include "dsp/firfilters.h"
+#include "dsp/fftfilters.h"
+#include "dsp/resamplers.h"
 
 int main()
 {
@@ -19,7 +21,7 @@ int main()
 
 	inFileName = "in.wav";
 	inFile = sf_open(inFileName, SFM_READ, &inFileInfo);
-	long int samp_count = inFileInfo.frames;
+	sf_count_t samp_count = inFileInfo.frames;
 	int samp_rate = inFileInfo.samplerate;
 	float *samplesIn = (float*)calloc(samp_count, sizeof(float));
 	sf_readf_float(inFile, samplesIn, samp_count);
@@ -27,7 +29,9 @@ int main()
 
 	const int MixFrequency = 500;
 	const int speedDivider = 100;
+
 	const int chunkSize = 1000;
+
 	if(samp_count < chunkSize)
 	{
 		printf("Your input file does not have enough samples!, expect this to crash\n");
@@ -51,7 +55,7 @@ int main()
 
 	dsp::gain::agc agc(20, samp_rate, 0.95);
 	dsp::filters::fftbrickwallhilbert *hilbert = new dsp::filters::fftbrickwallhilbert(300, samp_count);
-	dsp::upsamplers::complexUpsampler upsampler(chunkSize, speedDivider, speedDivider * 10);
+	dsp::resamplers::complexUpsampler upsampler(chunkSize, speedDivider, speedDivider * 10);
 	
 	float* bpfCoeffs = (float*)malloc(speedDivider * 10 * sizeof(float));
 	dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, bpfCoeffs, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + (samp_rate / 2 / speedDivider));
@@ -61,7 +65,7 @@ int main()
 	lv_32fc_t phase_increment = lv_cmake(cos(sinAngle), sin(sinAngle));
 	lv_32fc_t phase = lv_cmake(1.f, 0.0f);
 
-	for(int x = 0; x < samp_count; x += chunkSize)
+	for(sf_count_t x = 0; x < samp_count; x += chunkSize)
 	{
 		float *samples = &samplesIn[x];
 
@@ -90,9 +94,9 @@ int main()
 			printf("could not open output file");
 			return 1;
 		}
-		if(x % 5000 == 0)
+		if(x % 4000 == 0)
 		{
-			float percentage = ((float)x / samp_count) * 100;
+			float percentage = ((float)(x + chunkSize) / samp_count) * 100;
 			printf("%.1f%%\n", percentage);
 		}
 	}
@@ -102,6 +106,7 @@ int main()
 	free(inputComplex);
 	volk_free(outputComplex);
 	free(outputReal);
+	free(bpfCoeffs);
 	free(samplesIn);
 
 
