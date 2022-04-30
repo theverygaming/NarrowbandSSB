@@ -28,7 +28,7 @@ int main()
 	sf_close(inFile);
 
 	const int MixFrequency = 500;
-	const int speedDivider = 100;
+	const int speedDivider = 10;
 
 	const int chunkSize = 1000;
 
@@ -54,7 +54,7 @@ int main()
 	float *outputReal = (float*)malloc(chunkSize * speedDivider * sizeof(float));
 
 	dsp::gain::agc agc(20, samp_rate, 0.95);
-	dsp::filters::fftbrickwallhilbert *hilbert = new dsp::filters::fftbrickwallhilbert(300, samp_count);
+	dsp::filters::fftbrickwallhilbert hilbert(300, samp_count);
 	dsp::resamplers::complexUpsampler upsampler(chunkSize, speedDivider, speedDivider * 10);
 	
 	float* bpfCoeffs = (float*)malloc(speedDivider * 10 * sizeof(float));
@@ -68,26 +68,30 @@ int main()
 	for(sf_count_t x = 0; x < samp_count; x += chunkSize)
 	{
 		float *samples = &samplesIn[x];
-
-		agc.process(samples, samples, chunkSize);
-
-		hilbert->processSamples(chunkSize, samples, inputComplex1);
+		int chunkSize2 = chunkSize;
+		if(x + chunkSize > samp_count - 1)
+		{
+			chunkSize2 = chunkSize - (x + chunkSize - (samp_count - 1));
+		}
+		agc.process(samples, samples, chunkSize2);
+		
+		hilbert.processSamples(chunkSize2, samples, inputComplex1);
 		
 		upsampler.processSamples(inputComplex1, inputComplex);
 
 
-		volk_32fc_s32fc_x2_rotator_32fc(outputComplex, inputComplex, phase_increment, &phase, chunkSize * speedDivider);
+		volk_32fc_s32fc_x2_rotator_32fc(outputComplex, inputComplex, phase_increment, &phase, chunkSize2 * speedDivider);
 
-		for (int i = 0; i < chunkSize * speedDivider; i++)
+		for (int i = 0; i < chunkSize2 * speedDivider; i++)
 		{
 			outputReal[i] = outputComplex[i].real();
 		}
 		
-		finalBpf.filter(outputReal, outputReal, chunkSize * speedDivider);
+		finalBpf.filter(outputReal, outputReal, chunkSize2 * speedDivider);
 
 		if (writer.isOpen())
 		{
-			writer.writeData(outputReal, chunkSize * speedDivider * sizeof(float));
+			writer.writeData(outputReal, chunkSize2 * speedDivider * sizeof(float));
 		}
 		else
 		{
@@ -102,7 +106,6 @@ int main()
 	}
 	writer.finish();
 	free(inputComplex1);
-	delete hilbert;
 	free(inputComplex);
 	volk_free(outputComplex);
 	free(outputReal);

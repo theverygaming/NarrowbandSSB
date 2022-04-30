@@ -28,7 +28,7 @@ int main()
 	sf_close(inFile);
 
 	const int MixFrequency = 500;
-	const int speedDivider = 100;
+	const int speedDivider = 10;
 	const int chunkSize = 1000;
 
 
@@ -65,23 +65,27 @@ int main()
 	for(sf_count_t x = 0; x < samp_count; x += chunkSize)
 	{
 		float *samples = &samplesIn[x];
+		int chunkSize2 = chunkSize;
+		if(x + chunkSize > samp_count - 1)
+		{
+			chunkSize2 = chunkSize - (x + chunkSize - (samp_count - 1));
+		}
+		firstBpf.filter(samples, samples, chunkSize2);
 
-		firstBpf.filter(samples, samples, chunkSize);
+		hilbert.processSamples(chunkSize2, samples, inputComplex);
 
-		hilbert.processSamples(chunkSize, samples, inputComplex);
+		volk_32fc_s32fc_x2_rotator_32fc(inputComplex, inputComplex, phase_increment, &phase, chunkSize2);
 
-		volk_32fc_s32fc_x2_rotator_32fc(inputComplex, inputComplex, phase_increment, &phase, chunkSize);
-
-		for(int i = 0; i < chunkSize; i++)
+		for(int i = 0; i < chunkSize2; i++)
 		{
 			processReal[i] = inputComplex[i].real();
 		}
 
-		downsampler.downsample(chunkSize, processReal, outputReal);
+		downsampler.downsample(chunkSize2, processReal, outputReal);
 
 		if (writer.isOpen())
 		{
-			writer.writeData(outputReal, chunkSize / speedDivider * sizeof(float));
+			writer.writeData(outputReal, chunkSize2 / speedDivider * sizeof(float));
 		}
 		else
 		{
