@@ -5,10 +5,11 @@
 #include <string.h>
 #include <complex>
 #include <fftw3.h>
-#include "filter.h"
 #include <volk/volk.h>
 #include "wavwriter.h"
-#include "dsp.h"
+#include "dsp/dsp.h"
+#include "dsp/gain.h"
+#include "dsp/fir.h"
 
 int main()
 {
@@ -20,73 +21,89 @@ int main()
 	inFile = sf_open(inFileName, SFM_READ, &inFileInfo);
 	long int samp_count = inFileInfo.frames;
 	int samp_rate = inFileInfo.samplerate;
-	float *samples = (float*)calloc(samp_count, sizeof(float));
-	sf_readf_float(inFile, samples, samp_count); //??? fix this pointer thing pls why it produce warning error idk
-	sf_close(inFile);
-	printf("Be careful! This code will break with WAV files at 48000 Hz that are longer than about 12h. Actually it might be 6h but idk\n");
-	printf("Sample Rate = %d Hz\n", samp_rate);
-	printf("Sample Count = %ld\n", samp_count);
+	float *samplesIn = (float*)calloc(samp_count, sizeof(float));
+	sf_readf_float(inFile, samplesIn, samp_count);
 	sf_close(inFile);
 
-	const int MixFrequency = 500; //user
-	const int speedDivider = 10;   //user
-
-	if(speedDivider > samp_rate)
+	const int MixFrequency = 500;
+	const int speedDivider = 100;
+	const int chunkSize = 1000;
+	if(samp_count < chunkSize)
 	{
-		printf("Minimum Bandwidth is 0.5Hz!\n");
-		return 0;
+		printf("Your input file does not have enough samples!, expect this to crash\n");
 	}
 
-	
-
-	//Convert real array into complex, set Imaginary to zero
-	printf("Converting to complex\n");
-	std::complex<float> *inputComplex1 = (std::complex<float>*)calloc(samp_count, sizeof(std::complex<float>));
-	DSP::filters::fftbrickwallhilbert *hilbert = new DSP::filters::fftbrickwallhilbert(300, samp_count);
-	hilbert->processSamples(samp_count, samples, inputComplex1);
-	free(samples);
-
-
-	printf("Upsampling\n");
+	if(speedDivider > samp_rate / 2)
+	{
+		printf("wow that's slow, don't expect this to work well!\n");
+	}
 	if (speedDivider > 1)
 	{
 		printf("Output Bandwidth: %fHz\n", (float)(samp_rate / 2) / speedDivider);
 	}
-	std::complex<float> *inputComplex = (std::complex<float>*)calloc(samp_count * speedDivider, sizeof(std::complex<float>));
-	DSP::upsamplers::complexUpsampler upsampler(samp_count, speedDivider);
-	upsampler.processSamples(inputComplex1, inputComplex);
-	samp_count = samp_count * speedDivider;
-	free(inputComplex1);
 
 
-	printf("Mixing up\n");
-	unsigned int alignment = volk_get_alignment();
-	lv_32fc_t *outputComplex = (lv_32fc_t *)volk_malloc(sizeof(lv_32fc_t) * samp_count, alignment);
+	WavWriter writer("out.wav", 32, 1, samp_rate);
+	std::complex<float> *inputComplex1 = (std::complex<float>*)malloc(chunkSize * sizeof(std::complex<float>));
+	std::complex<float> *inputComplex = (std::complex<float>*)malloc(chunkSize * speedDivider * sizeof(std::complex<float>));
+	lv_32fc_t *outputComplex = (lv_32fc_t *)volk_malloc(sizeof(lv_32fc_t) * chunkSize * speedDivider, volk_get_alignment());
+	float *outputReal = (float*)malloc(chunkSize * speedDivider * sizeof(float));
+
+	dsp::gain::agc agc(20, samp_rate, 0.95);
+	dsp::filters::fftbrickwallhilbert *hilbert = new dsp::filters::fftbrickwallhilbert(300, samp_count);
+	dsp::upsamplers::complexUpsampler upsampler(chunkSize, speedDivider, speedDivider * 10);
+	
+	float* bpfCoeffs = (float*)malloc(speedDivider * 10 * sizeof(float));
+	dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, bpfCoeffs, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + (samp_rate / 2 / speedDivider));
+	dsp::filters::FIRfilter finalBpf(speedDivider * 10, bpfCoeffs, chunkSize * speedDivider);
+
 	float sinAngle = 2.0 * 3.14159265359 * MixFrequency / samp_rate;
 	lv_32fc_t phase_increment = lv_cmake(cos(sinAngle), sin(sinAngle));
 	lv_32fc_t phase = lv_cmake(1.f, 0.0f);
-	volk_32fc_s32fc_x2_rotator_32fc(outputComplex, inputComplex, phase_increment, &phase, samp_count);
-	free(inputComplex);
 
-	printf("Converting back to real\n");
-	float *outputReal = (float*)calloc(samp_count, sizeof(float));
-	for (int i = 0; i < samp_count; i++)
+	for(int x = 0; x < samp_count; x += chunkSize)
 	{
-		outputReal[i] = outputComplex[i].real();
-	}
-	volk_free(outputComplex);
+		float *samples = &samplesIn[x];
 
-	
-	printf("Writing to output file\n");
-	WavWriter writer("out.wav", 32, 1, samp_rate);
-	if(writer.isOpen())
-	{
-		writer.writeData(outputReal, samp_count * sizeof(float));
-	}
-	else {
-		printf("could not open output file");
+		agc.process(samples, samples, chunkSize);
+
+		hilbert->processSamples(chunkSize, samples, inputComplex1);
+		
+		upsampler.processSamples(inputComplex1, inputComplex);
+
+
+		volk_32fc_s32fc_x2_rotator_32fc(outputComplex, inputComplex, phase_increment, &phase, chunkSize * speedDivider);
+
+		for (int i = 0; i < chunkSize * speedDivider; i++)
+		{
+			outputReal[i] = outputComplex[i].real();
+		}
+		
+		finalBpf.filter(outputReal, outputReal, chunkSize * speedDivider);
+
+		if (writer.isOpen())
+		{
+			writer.writeData(outputReal, chunkSize * speedDivider * sizeof(float));
+		}
+		else
+		{
+			printf("could not open output file");
+			return 1;
+		}
+		if(x % 5000 == 0)
+		{
+			float percentage = ((float)x / samp_count) * 100;
+			printf("%.1f%%\n", percentage);
+		}
 	}
 	writer.finish();
+	free(inputComplex1);
+	delete hilbert;
+	free(inputComplex);
+	volk_free(outputComplex);
+	free(outputReal);
+	free(samplesIn);
+
 
 	return 0;
 }

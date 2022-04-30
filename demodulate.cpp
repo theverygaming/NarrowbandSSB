@@ -5,7 +5,6 @@
 #include <string.h>
 #include <complex>
 #include <fftw3.h>
-#include "filter.h"
 #include <volk/volk.h>
 #include "wavwriter.h"
 
@@ -116,15 +115,13 @@ int main()
 	long int samp_count = inFileInfo.frames;
 	int samp_rate = inFileInfo.samplerate;
 	float *samples = (float*)calloc(samp_count, sizeof(float));
-	sf_readf_float(inFile, samples, samp_count); //??? fix this pointer thing pls why it produce warning error idk
+	sf_readf_float(inFile, samples, samp_count);
 	sf_close(inFile);
 	printf("Be careful! This code will break with WAV files at 48000 Hz that are longer than about 12h. Actually it might be 6h but idk\n");
 	printf("Sample Rate = %d Hz\n", samp_rate);
 	printf("Sample Count = %ld\n", samp_count);
-	sf_close(inFile);
 
 	const int MixFrequency = 500; //user
-	//const int Bandwidth = 1000;	   //user
 	const int speedDivider = 10;   //user
 
 	float Bandwidth = (float)(samp_rate / 2) / speedDivider;

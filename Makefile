@@ -4,9 +4,9 @@ CC = g++
 
 all: main
 
-main: modulate.o demodulate.o filter.o
-	$(CC) modulate.o filter.o $(LDLIBS) -o build/modulate
-	$(CC) demodulate.o filter.o $(LDLIBS) -o build/demodulate
+main: modulate.o demodulate.o
+	$(CC) modulate.o $(LDLIBS) -o build/modulate
+	$(CC) demodulate.o $(LDLIBS) -o build/demodulate
 
 clean:
 	$(RM) *.o
