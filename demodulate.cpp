@@ -40,9 +40,8 @@ int main() {
 
     printf("input Bandwidth: %fHz\n", Bandwidth);
 
-    float *bpfCoeffs = (float *)malloc(speedDivider * 10 * sizeof(float));
-    dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, bpfCoeffs, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + Bandwidth);
-    dsp::filters::FIRfilter firstBpf(speedDivider * 10, bpfCoeffs, chunkSize);
+    std::vector<float> bpfCoeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + Bandwidth);
+    dsp::filters::FIRfilter firstBpf(bpfCoeffs, chunkSize);
 
     dsp::filters::fftbrickwallhilbert hilbert(300, chunkSize);
 
@@ -62,7 +61,7 @@ int main() {
         if (x + chunkSize > samp_count - 1) {
             chunkSize2 = chunkSize - (x + chunkSize - (samp_count - 1));
         }
-        firstBpf.filter(samples, samples, chunkSize2);
+        firstBpf.run(samples, samples, chunkSize2);
 
         hilbert.processSamples(chunkSize2, samples, inputComplex);
 
@@ -87,7 +86,6 @@ int main() {
     }
     writer.finish();
     free(samplesIn);
-    free(bpfCoeffs);
     free(outputReal);
     free(processReal);
     volk_free(inputComplex);

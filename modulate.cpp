@@ -51,9 +51,8 @@ int main() {
     dsp::filters::fftbrickwallhilbert hilbert(300, samp_count);
     dsp::resamplers::complexUpsampler upsampler(chunkSize, speedDivider, speedDivider * 10);
 
-    float *bpfCoeffs = (float *)malloc(speedDivider * 10 * sizeof(float));
-    dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, bpfCoeffs, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + (samp_rate / 2 / speedDivider));
-    dsp::filters::FIRfilter finalBpf(speedDivider * 10, bpfCoeffs, chunkSize * speedDivider);
+    std::vector<float> bpfCoeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + (samp_rate / 2 / speedDivider));
+    dsp::filters::FIRfilter finalBpf(bpfCoeffs, chunkSize * speedDivider);
 
     float sinAngle = 2.0 * 3.14159265359 * MixFrequency / samp_rate;
     lv_32fc_t phase_increment = lv_cmake(cos(sinAngle), sin(sinAngle));
@@ -77,7 +76,7 @@ int main() {
             outputReal[i] = outputComplex[i].real();
         }
 
-        finalBpf.filter(outputReal, outputReal, chunkSize2 * speedDivider);
+        finalBpf.run(outputReal, outputReal, chunkSize2 * speedDivider);
 
         if (writer.isOpen()) {
             writer.writeData(outputReal, chunkSize2 * speedDivider * sizeof(float));
@@ -95,7 +94,6 @@ int main() {
     free(inputComplex);
     volk_free(outputComplex);
     free(outputReal);
-    free(bpfCoeffs);
     free(samplesIn);
 
     return 0;
