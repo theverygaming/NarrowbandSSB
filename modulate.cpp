@@ -27,7 +27,7 @@ int main() {
     sf_close(inFile);
 
     const int MixFrequency = 500;
-    const int speedDivider = 100;
+    const int speedDivider = 50;
 
     const int chunkSize = 1000;
 
@@ -49,11 +49,10 @@ int main() {
         return 1;
     }
 
-    float *input = (float *)malloc(chunkSize * sizeof(float));
     float *output = (float *)malloc(chunkSize * speedDivider * sizeof(float));
 
     dsp::gain::agc agc(20, samp_rate, 0.95);
-    dsp::resamplers::realUpsampler upsampler(chunkSize, speedDivider, speedDivider * 10);
+    dsp::resamplers::realUpsampler upsampler(chunkSize, speedDivider, speedDivider);
 
     dsp::mixer::real_mixer mixer(MixFrequency, samp_rate);
 
@@ -85,6 +84,8 @@ int main() {
     }
 
     writer.finish();
+    free(samplesIn);
+    free(output);
 
     return 0;
 }

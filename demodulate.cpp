@@ -2,6 +2,7 @@
 #include <dsp/fftfilters.h>
 #include <dsp/firfilters.h>
 #include <dsp/gain.h>
+#include <dsp/mixer.h>
 #include <dsp/resamplers.h>
 #include <dsp/wav.h>
 #include <fftw3.h>
@@ -26,7 +27,8 @@ int main() {
     sf_close(inFile);
 
     const int MixFrequency = 500;
-    const int speedDivider = 10;
+    const int speedDivider = 50;
+
     const int chunkSize = 1000;
 
     float Bandwidth = (float)(samp_rate / 2) / speedDivider;
@@ -40,45 +42,39 @@ int main() {
 
     printf("input Bandwidth: %fHz\n", Bandwidth);
 
-    std::vector<float> bpfCoeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + Bandwidth);
-    dsp::filters::FIRfilter firstBpf(bpfCoeffs, chunkSize);
+    std::vector<float> bpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + Bandwidth);
+    dsp::filters::FIRfilter bpf(bpf_coeffs, chunkSize);
 
-    dsp::filters::fftbrickwallhilbert hilbert(300, chunkSize);
+    std::vector<float> lpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 10, samp_rate, 0, Bandwidth);
+    dsp::filters::FIRfilter lpf(lpf_coeffs, chunkSize);
 
-    float sinAngle = 2.0 * 3.14159265359 * -MixFrequency / samp_rate;
-    lv_32fc_t phase_increment = lv_cmake(cos(sinAngle), sin(sinAngle));
-    lv_32fc_t phase = lv_cmake(1.f, 0.0f);
-    lv_32fc_t *inputComplex = (lv_32fc_t *)volk_malloc(sizeof(lv_32fc_t) * samp_count, volk_get_alignment());
+    dsp::mixer::real_mixer mixer(MixFrequency, samp_rate);
 
     dsp::resamplers::realDownsampler downsampler(speedDivider);
-    float *processReal = (float *)malloc(chunkSize * sizeof(float));
-    float *outputReal = (float *)malloc((chunkSize / speedDivider) * sizeof(float));
+    float *output = (float *)malloc((chunkSize / speedDivider) * sizeof(float));
 
     dsp::wav::wavWriter writer("demod_out.wav", 32, 1, samp_rate);
+
+    if (!writer.isOpen()) {
+        printf("could not open output file");
+        return 1;
+    }
+
     for (sf_count_t x = 0; x < samp_count; x += chunkSize) {
         float *samples = &samplesIn[x];
         int chunkSize2 = chunkSize;
         if (x + chunkSize > samp_count - 1) {
             chunkSize2 = chunkSize - (x + chunkSize - (samp_count - 1));
         }
-        firstBpf.run(samples, samples, chunkSize2);
+        bpf.run(samples, samples, chunkSize2);
 
-        hilbert.processSamples(chunkSize2, samples, inputComplex);
+        mixer.run(samples, samples, chunkSize2);
 
-        volk_32fc_s32fc_x2_rotator_32fc(inputComplex, inputComplex, phase_increment, &phase, chunkSize2);
+        lpf.run(samples, samples, chunkSize2);
 
-        for (int i = 0; i < chunkSize2; i++) {
-            processReal[i] = inputComplex[i].real();
-        }
+        downsampler.downsample(chunkSize2, samples, output);
 
-        downsampler.downsample(chunkSize2, processReal, outputReal);
-
-        if (writer.isOpen()) {
-            writer.writeData(outputReal, chunkSize2 / speedDivider * sizeof(float));
-        } else {
-            printf("could not open output file");
-            return 1;
-        }
+        writer.writeData(output, (chunkSize2 / speedDivider) * sizeof(float));
         if (x % 100000 == 0) {
             float percentage = ((float)(x + chunkSize) / samp_count) * 100;
             printf("%.1f%%\n", percentage);
@@ -86,9 +82,7 @@ int main() {
     }
     writer.finish();
     free(samplesIn);
-    free(outputReal);
-    free(processReal);
-    volk_free(inputComplex);
+    free(output);
 
     return 0;
 }
