@@ -42,10 +42,10 @@ int main() {
 
     printf("input Bandwidth: %fHz\n", Bandwidth);
 
-    std::vector<float> bpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 10, samp_rate, MixFrequency, MixFrequency + Bandwidth);
+    std::vector<float> bpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 100, samp_rate, MixFrequency, MixFrequency + Bandwidth);
     dsp::filters::FIRfilter bpf(bpf_coeffs, chunkSize);
 
-    std::vector<float> lpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 10, samp_rate, 0, Bandwidth);
+    std::vector<float> lpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 100, samp_rate, 0, Bandwidth);
     dsp::filters::FIRfilter lpf(lpf_coeffs, chunkSize);
 
     dsp::mixer::real_mixer mixer(MixFrequency, samp_rate);
