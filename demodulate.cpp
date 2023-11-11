@@ -26,10 +26,11 @@ int main() {
     sf_readf_float(inFile, samplesIn, samp_count);
     sf_close(inFile);
 
-    const int MixFrequency = 500;
-    const int speedDivider = 50;
+    const float MixFrequency = 500;
+    const int speedDivider = 30;
+    const int filterCoeffs = speedDivider * 1;
 
-    const int chunkSize = 1000;
+    const int chunkSize = 10000; // note: chunkSize will be divided by speedDivider at some point
 
     float Bandwidth = (float)(samp_rate / 2) / speedDivider;
     if (samp_count < chunkSize) {
@@ -42,10 +43,10 @@ int main() {
 
     printf("input Bandwidth: %fHz\n", Bandwidth);
 
-    std::vector<float> bpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 100, samp_rate, MixFrequency, MixFrequency + Bandwidth);
+    std::vector<float> bpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, filterCoeffs, samp_rate, MixFrequency, MixFrequency + Bandwidth);
     dsp::filters::FIRfilter bpf(bpf_coeffs, chunkSize);
 
-    std::vector<float> lpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, speedDivider * 100, samp_rate, 0, Bandwidth);
+    std::vector<float> lpf_coeffs = dsp::filters::FIRcoeffcalc::calcCoeffs_band(dsp::filters::FIRcoeffcalc::bandpass, filterCoeffs, samp_rate, 0, Bandwidth);
     dsp::filters::FIRfilter lpf(lpf_coeffs, chunkSize);
 
     dsp::mixer::real_mixer mixer(MixFrequency, samp_rate);
@@ -53,7 +54,7 @@ int main() {
     dsp::resamplers::realDownsampler downsampler(speedDivider);
     float *output = (float *)malloc((chunkSize / speedDivider) * sizeof(float));
 
-    dsp::wav::wavWriter writer("demod_out.wav", 32, 1, samp_rate);
+    dsp::wav::wavWriter writer("demod_out_2.wav", 32, 1, samp_rate);
 
     if (!writer.isOpen()) {
         printf("could not open output file");
@@ -62,7 +63,7 @@ int main() {
 
     for (sf_count_t x = 0; x < samp_count; x += chunkSize) {
         float *samples = &samplesIn[x];
-        int chunkSize2 = chunkSize;
+        sf_count_t chunkSize2 = chunkSize;
         if (x + chunkSize > samp_count - 1) {
             chunkSize2 = chunkSize - (x + chunkSize - (samp_count - 1));
         }

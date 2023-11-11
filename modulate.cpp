@@ -27,9 +27,9 @@ int main() {
     sf_close(inFile);
 
     const int MixFrequency = 500;
-    const int speedDivider = 50;
+    const int speedDivider = 30;
 
-    const int chunkSize = 1000;
+    const int chunkSize = 10000;
 
     if (samp_count < chunkSize) {
         printf("Your input file does not have enough samples!, expect this to crash\n");
